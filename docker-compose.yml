@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Redis Stack for vector search and JSON storage
+  redis:
+    image: redis/redis-stack:latest
+    container_name: radiuexai-redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"  # RedisInsight UI
+    environment:
+      - REDIS_ARGS=--save 60 1000 --loglevel warning
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Rasa chatbot service
+  rasa:
+    image: rasa/rasa:3.6.2
+    container_name: skincareai-rasa
+    ports:
+      - "5005:5005"  # Rasa server
+      - "5006:5006"  # Rasa actions server
+    volumes:
+      - ./rasa:/app
+    working_dir: /app
+    command: run --enable-api --cors "*" --debug
+    environment:
+      - RASA_TOKEN=${RASA_TOKEN:-your-rasa-token}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Rasa Actions Server (for custom actions)
+  rasa-actions:
+    image: rasa/rasa-sdk:3.6.2
+    container_name: skincareai-rasa-actions
+    ports:
+      - "5055:5055"
+    volumes:
+      - ./rasa/actions:/app/actions
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: skincareai-network 
